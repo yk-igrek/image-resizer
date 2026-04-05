@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>縮小ツール</title>
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/upng-js@2.1.0/UPNG.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --bg: #f1f5f9;
+  --surface: #ffffff;
+  --border: #e2e8f0;
+  --text: #0f172a;
+  --text-muted: #64748b;
+  --success: #10b981;
+  --error: #ef4444;
+  --drop-bg: #eef2ff;
+  --drop-border: #a5b4fc;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', 'Yu Gothic UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 28px 16px 48px;
+}
+
+.container { max-width: 920px; margin: 0 auto; }
+
+header { margin-bottom: 24px; }
+h1 { font-size: 1.6rem; font-weight: 700; color: var(--primary); margin-bottom: 4px; }
+.subtitle { font-size: 0.88rem; color: var(--text-muted); }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 22px;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.05);
+}
+
+.card-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+
+/* ── Drop Zone ── */
+.drop-zone {
+  border: 2.5px dashed var(--drop-border);
+  border-radius: 14px;
+  background: var(--drop-bg);
+  padding: 52px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: background .2s, border-color .2s, transform .15s;
+  margin-bottom: 14px;
+  user-select: none;
+}
+.drop-zone:hover { background: #e0e7ff; border-color: var(--primary); }
+.drop-zone.drag-over {
+  background: #c7d2fe;
+  border-color: var(--primary);
+  transform: scale(1.015);
+}
+.drop-icon { font-size: 3rem; margin-bottom: 10px; line-height: 1; }
+.drop-text { font-size: 1.05rem; font-weight: 700; color: var(--primary); margin-bottom: 6px; }
+.drop-sub { font-size: 0.82rem; color: var(--text-muted); line-height: 1.6; }
+
+/* ── Settings ── */
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+@media (max-width: 620px) { .settings-grid { grid-template-columns: 1fr; } }
+
+.setting-group { margin-bottom: 18px; }
+.setting-group:last-child { margin-bottom: 0; }
+
+.setting-label {
+  display: block;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 9px;
+}
+
+/* Size buttons */
+.size-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.size-btn {
+  padding: 5px 11px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  transition: border-color .15s, background .15s, color .15s;
+  color: var(--text);
+  font-family: inherit;
+}
+.size-btn:hover { border-color: var(--primary); color: var(--primary); }
+.size-btn.active { border-color: var(--primary); background: var(--primary); color: #fff; }
+
+.custom-input-wrap {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.custom-input-wrap.visible { display: flex; }
+
+input[type="number"], input[type="text"] {
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 0.88rem;
+  outline: none;
+  transition: border-color .15s;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--surface);
+}
+input[type="number"]:focus, input[type="text"]:focus { border-color: var(--primary); }
+
+/* Format buttons */
+.format-grid { display: flex; flex-wrap: wrap; gap: 7px; }
+.format-btn {
+  padding: 5px 13px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  transition: border-color .15s, background .15s, color .15s;
+  color: var(--text);
+  font-family: inherit;
+}
+.format-btn.active { border-color: var(--primary); background: var(--primary); color: #fff; }
+.format-btn:hover:not(.active) { border-color: var(--primary); color: var(--primary); }
+
+/* Quality */
+input[type="range"] { width: 100%; accent-color: var(--primary); cursor: pointer; }
+.quality-label-row { display: flex; justify-content: space-between; font-size: 0.82rem; }
+
+/* Save options */
+.save-options { display: flex; flex-direction: column; gap: 9px; }
+.save-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.save-option.active { border-color: var(--primary); background: #eef2ff; }
+.save-option input[type="radio"] { margin-top: 2px; accent-color: var(--primary); cursor: pointer; }
+.save-option-body { flex: 1; }
+.save-option-title { font-weight: 600; font-size: 0.88rem; margin-bottom: 6px; }
+.save-option-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.save-option-row input[type="text"] {
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  width: 130px;
+}
+
+/* File list */
+.file-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.file-list::-webkit-scrollbar { width: 5px; }
+.file-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border-radius: 9px;
+  font-size: 0.84rem;
+}
+.file-thumb {
+  width: 42px; height: 42px;
+  object-fit: cover;
+  border-radius: 7px;
+  flex-shrink: 0;
+  background: var(--border);
+}
+.file-thumb-placeholder {
+  width: 42px; height: 42px;
+  border-radius: 7px;
+  background: var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  flex-shrink: 0;
+}
+.file-info { flex: 1; min-width: 0; }
+.file-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-meta { color: var(--text-muted); font-size: 0.76rem; margin-top: 2px; }
+
+.file-status {
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 99px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.status-pending    { background: #f1f5f9; color: var(--text-muted); }
+.status-processing { background: #fef3c7; color: #b45309; }
+.status-done       { background: #d1fae5; color: #065f46; }
+.status-error      { background: #fee2e2; color: #b91c1c; }
+
+.file-dl {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  font-size: 0.82rem;
+  border-radius: 7px;
+  border: 1.5px solid var(--border);
+}
+.file-dl:hover { border-color: var(--primary); color: var(--primary); }
+
+.file-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 1rem;
+  padding: 4px;
+  line-height: 1;
+  border-radius: 5px;
+  transition: color .15s, background .15s;
+  flex-shrink: 0;
+}
+.file-remove:hover { color: var(--error); background: #fee2e2; }
+
+.empty-state { text-align: center; padding: 20px; color: var(--text-muted); font-size: 0.88rem; }
+
+/* Progress */
+.progress-wrap { margin-top: 14px; }
+.progress-track {
+  background: var(--border);
+  border-radius: 99px;
+  height: 7px;
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 99px;
+  transition: width .3s ease;
+}
+.progress-text { font-size: 0.82rem; color: var(--text-muted); margin-top: 7px; }
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  transition: background .15s, border-color .15s, color .15s, opacity .15s;
+  font-family: inherit;
+  line-height: 1;
+}
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+.btn-secondary {
+  background: var(--surface);
+  color: var(--text);
+  border: 1.5px solid var(--border);
+}
+.btn-secondary:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-sm { padding: 5px 12px; font-size: 0.8rem; border-radius: 8px; }
+.btn-process { padding: 16px 56px; font-size: 1.15rem; border-radius: 14px; letter-spacing: .03em; }
+
+.btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* Browser note */
+.browser-note {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-top: 10px;
+  display: none;
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>縮小ツール</h1>
+    <p class="subtitle">HEIC / JPG / PNG / WebP 対応 ― ドラッグ＆ドロップで一括リサイズ</p>
+  </header>
+
+  <!-- Drop Zone -->
+  <div class="drop-zone" id="dropZone">
+    <div class="drop-icon">🖼️</div>
+    <div class="drop-text">画像をここにドラッグ＆ドロップ</div>
+    <div class="drop-sub">クリックしてファイルを選択することもできます<br>HEIC・HEIF・JPG・PNG・WebP・GIF 対応</div>
+    <input type="file" id="fileInput" multiple accept="image/*,.heic,.heif" style="display:none">
+  </div>
+
+  <!-- File List (drop zone の直下) -->
+  <div class="card" id="fileListCard" style="display:none">
+    <div class="file-list-header">
+      <div class="card-title" style="margin-bottom:0">
+        アップロードした画像一覧 &nbsp;<span id="fileCount" style="color:var(--primary)">0</span> 枚
+      </div>
+      <button class="btn btn-secondary btn-sm" id="clearBtn">すべて削除</button>
+    </div>
+    <div class="file-list" id="fileList"></div>
+    <div id="zipRow" style="display:none; margin-top:14px; text-align:center;">
+      <button class="btn btn-secondary" id="downloadBtn">⬇ まとめて ZIP でダウンロード</button>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="card">
+    <div class="card-title">リサイズ設定</div>
+    <div class="settings-grid">
+
+      <!-- Left column -->
+      <div>
+        <div class="setting-group">
+          <label class="setting-label">最大サイズ（内接・px）</label>
+          <div class="size-buttons" id="sizeButtons">
+            <button class="size-btn" data-size="1600">1600</button>
+            <button class="size-btn" data-size="1280">1280</button>
+            <button class="size-btn active" data-size="1024">1024</button>
+            <button class="size-btn" data-size="800">800</button>
+            <button class="size-btn" data-size="640">640</button>
+            <button class="size-btn" data-size="400">400</button>
+            <button class="size-btn" data-size="320">320</button>
+            <button class="size-btn" id="customBtn">任意</button>
+          </div>
+          <div class="custom-input-wrap" id="customWrap">
+            <input type="number" id="customSize" placeholder="例: 1500" min="10" max="9999" style="width:110px">
+            <span style="font-size:.82rem; color:var(--text-muted)">px</span>
+          </div>
+          <p style="font-size:0.76rem; color:var(--text-muted); margin-top:8px">
+            幅・高さともにこの値以内に収まるよう、アスペクト比を保って縮小します。<br>
+            元画像がすでに小さい場合は拡大しません。
+          </p>
+        </div>
+
+        <div class="setting-group">
+          <label class="setting-label">出力形式</label>
+          <div class="format-grid" id="formatButtons">
+            <button class="format-btn active" data-fmt="original">元のまま</button>
+            <button class="format-btn" data-fmt="jpg">JPG</button>
+            <button class="format-btn" data-fmt="png">PNG</button>
+            <button class="format-btn" data-fmt="webp">WebP</button>
+          </div>
+          <p style="font-size:0.76rem; color:var(--text-muted); margin-top:6px">
+            ※ HEIC は「元のまま」でも JPG に変換されます。
+          </p>
+        </div>
+
+        <div class="setting-group" id="qualityGroup">
+          <label class="setting-label">
+            <span class="quality-label-row">
+              <span id="qualityLabel">品質（JPG / WebP）</span>
+              <span id="qualityVal">90</span>%
+            </span>
+          </label>
+          <input type="range" id="qualityRange" min="1" max="100" value="90">
+          <p id="qualityNote" style="font-size:0.76rem; color:var(--text-muted); margin-top:6px; display:none">
+            100% = フルカラー（無劣化）／ 下げると色数を減らして軽量化します
+          </p>
+        </div>
+      </div>
+
+      <!-- Right column -->
+      <div>
+        <div class="setting-group">
+          <label class="setting-label">保存方法</label>
+          <div class="save-options">
+
+            <label class="save-option active" id="optFolder">
+              <input type="radio" name="saveMethod" value="folder" checked>
+              <div class="save-option-body">
+                <div class="save-option-title">📁 フォルダに保存</div>
+                <div class="save-option-row">
+                  <span>フォルダ名:</span>
+                  <input type="text" id="folderName" value="resized" maxlength="60">
+                </div>
+              </div>
+            </label>
+
+            <label class="save-option" id="optPrefix">
+              <input type="radio" name="saveMethod" value="prefix">
+              <div class="save-option-body">
+                <div class="save-option-title">ファイル名の前に名前を追加</div>
+                <div class="save-option-row">
+                  <input type="text" id="prefixText" value="resized_" maxlength="40">
+                  <span>+ 元のファイル名</span>
+                </div>
+              </div>
+            </label>
+
+            <label class="save-option" id="optSuffix">
+              <input type="radio" name="saveMethod" value="suffix">
+              <div class="save-option-body">
+                <div class="save-option-title">ファイル名の後に名前を追加</div>
+                <div class="save-option-row">
+                  <span>元のファイル名 +</span>
+                  <input type="text" id="suffixText" value="_resized" maxlength="40">
+                </div>
+              </div>
+            </label>
+
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div id="actionCard" style="display:none; text-align:center; margin-bottom:14px;">
+    <button class="btn btn-primary btn-process" id="processBtn">▶ リサイズ開始</button>
+    <div class="progress-wrap" id="progressWrap" style="display:none">
+      <div class="progress-track"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
+      <div class="progress-text" id="progressText"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ===== State ===== */
+let files = [];
+let results = [];
+let selectedSize = 1024;
+let isCustom = false;
+let selectedFormat = 'original';
+let saveMethod = 'folder';
+let processing = false;
+
+/* ===== DOM ===== */
+const dropZone       = document.getElementById('dropZone');
+const fileInput      = document.getElementById('fileInput');
+const fileListCard   = document.getElementById('fileListCard');
+const actionCard     = document.getElementById('actionCard');
+const fileListEl     = document.getElementById('fileList');
+const fileCountEl    = document.getElementById('fileCount');
+const clearBtn       = document.getElementById('clearBtn');
+const processBtn     = document.getElementById('processBtn');
+const downloadBtn    = document.getElementById('downloadBtn');
+const zipRow         = document.getElementById('zipRow');
+const progressWrap   = document.getElementById('progressWrap');
+const progressBar    = document.getElementById('progressBar');
+const progressText   = document.getElementById('progressText');
+const qualityRange   = document.getElementById('qualityRange');
+const qualityVal     = document.getElementById('qualityVal');
+const qualityGroup   = document.getElementById('qualityGroup');
+const customBtn      = document.getElementById('customBtn');
+const customWrap     = document.getElementById('customWrap');
+const customSizeIn   = document.getElementById('customSize');
+const folderNameIn   = document.getElementById('folderName');
+const prefixIn       = document.getElementById('prefixText');
+const suffixIn       = document.getElementById('suffixText');
+
+/* ===== Size selector ===== */
+document.getElementById('sizeButtons').addEventListener('click', e => {
+  const btn = e.target.closest('.size-btn');
+  if (!btn) return;
+
+  if (btn === customBtn) {
+    document.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
+    customBtn.classList.add('active');
+    customWrap.classList.add('visible');
+    isCustom = true;
+    const v = parseInt(customSizeIn.value);
+    if (v > 0) selectedSize = v;
+    return;
+  }
+
+  const size = parseInt(btn.dataset.size);
+  if (isNaN(size)) return;
+  document.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  selectedSize = size;
+  isCustom = false;
+  customWrap.classList.remove('visible');
+});
+
+customSizeIn.addEventListener('input', () => {
+  const v = parseInt(customSizeIn.value);
+  if (v > 0) selectedSize = v;
+});
+
+/* ===== Format selector ===== */
+document.getElementById('formatButtons').addEventListener('click', e => {
+  const btn = e.target.closest('.format-btn');
+  if (!btn) return;
+  document.querySelectorAll('.format-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  selectedFormat = btn.dataset.fmt;
+  const isPng = selectedFormat === 'png';
+  qualityGroup.style.display = '';
+  document.getElementById('qualityLabel').textContent =
+    isPng ? 'PNG 色数（品質）' : '品質（JPG / WebP）';
+  document.getElementById('qualityNote').style.display = isPng ? '' : 'none';
+});
+
+/* ===== Quality ===== */
+qualityRange.addEventListener('input', () => { qualityVal.textContent = qualityRange.value; });
+
+/* ===== Save method ===== */
+document.querySelectorAll('input[name="saveMethod"]').forEach(r => {
+  r.addEventListener('change', () => {
+    saveMethod = r.value;
+    document.querySelectorAll('.save-option').forEach(o => o.classList.remove('active'));
+    r.closest('.save-option').classList.add('active');
+    refreshActionButtons();
+  });
+});
+
+/* ===== Drop Zone ===== */
+dropZone.addEventListener('click', () => fileInput.click());
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', e => {
+  if (!dropZone.contains(e.relatedTarget)) dropZone.classList.remove('drag-over');
+});
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  addFiles([...e.dataTransfer.files].filter(isImage));
+});
+
+fileInput.addEventListener('change', () => {
+  addFiles([...fileInput.files].filter(isImage));
+  fileInput.value = '';
+});
+
+function isImage(f) {
+  return f.type.startsWith('image/') || /\.(heic|heif|jpe?g|png|gif|webp|bmp|tiff?)$/i.test(f.name);
+}
+
+/* ===== File management ===== */
+function addFiles(newFiles) {
+  const existingKeys = new Set(files.map(f => f.name + f.size));
+  files.push(...newFiles.filter(f => !existingKeys.has(f.name + f.size)));
+  results = [];
+  renderFileList();
+  updateUI();
+}
+
+clearBtn.addEventListener('click', () => { files = []; results = []; renderFileList(); updateUI(); });
+
+function formatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+  return (b / 1048576).toFixed(1) + ' MB';
+}
+
+function buildSizeMeta(origSize, outSize) {
+  const pct = Math.round((1 - outSize / origSize) * 100);
+  const arrow = pct >= 0 ? '▼' : '▲';
+  const color = pct >= 0 ? '#10b981' : '#f59e0b';
+  return `${formatBytes(origSize)} → ${formatBytes(outSize)} `
+       + `<span style="color:${color}; font-weight:700">${arrow}${Math.abs(pct)}%</span>`;
+}
+
+function renderFileList() {
+  fileListEl.innerHTML = '';
+  if (files.length === 0) {
+    fileListEl.innerHTML = '<div class="empty-state">ファイルがありません</div>';
+    fileCountEl.textContent = '0';
+    return;
+  }
+
+  fileCountEl.textContent = files.length;
+
+  files.forEach((f, i) => {
+    const res = results[i];
+    const isHeic = /\.(heic|heif)$/i.test(f.name);
+    const statusClass = !res ? 'status-pending' : res.error ? 'status-error' : 'status-done';
+    const statusText  = !res ? '待機中' : res.error ? 'エラー' : `${res.dimensions}`;
+
+    const dlVisible = res && !res.error;
+    const metaText = (res && !res.error)
+      ? buildSizeMeta(f.size, res.size)
+      : formatBytes(f.size);
+    const item = document.createElement('div');
+    item.className = 'file-item';
+    item.innerHTML = `
+      <div class="file-thumb-placeholder" data-idx="${i}">${isHeic ? '📷' : '🖼'}</div>
+      <div class="file-info">
+        <div class="file-name" title="${f.name}">${f.name}</div>
+        <div class="file-meta">${metaText}</div>
+      </div>
+      <span class="file-status ${statusClass}">${statusText}</span>
+      <button class="file-dl btn btn-secondary btn-sm" data-idx="${i}" title="ダウンロード"
+        style="display:${dlVisible ? '' : 'none'}">⬇ ダウンロード</button>
+      <button class="file-remove" data-idx="${i}" title="削除">✕</button>
+    `;
+    fileListEl.appendChild(item);
+
+    // Thumbnail for non-HEIC images
+    if (!isHeic && f.type.startsWith('image/')) {
+      const url = URL.createObjectURL(f);
+      const ph = item.querySelector('.file-thumb-placeholder');
+      const img = document.createElement('img');
+      img.className = 'file-thumb';
+      img.src = url;
+      img.onload = () => URL.revokeObjectURL(url);
+      img.onerror = () => URL.revokeObjectURL(url);
+      ph.replaceWith(img);
+    }
+  });
+
+  fileListEl.querySelectorAll('.file-dl').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const r = results[+btn.dataset.idx];
+      if (!r || r.error) return;
+      const url = URL.createObjectURL(r.blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = r.filename;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    });
+  });
+
+  fileListEl.querySelectorAll('.file-remove').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      files.splice(+btn.dataset.idx, 1);
+      results = [];
+      renderFileList();
+      updateUI();
+    });
+  });
+}
+
+function updateUI() {
+  const has = files.length > 0;
+  fileListCard.style.display = has ? '' : 'none';
+  actionCard.style.display   = has ? '' : 'none';
+  refreshActionButtons();
+}
+
+function refreshActionButtons() {
+  const hasResults = results.length > 0 && results.some(r => r && !r.error);
+  zipRow.style.display = hasResults ? '' : 'none';
+}
+
+/* ===== Image processing helpers ===== */
+function loadImage(blob) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload  = () => { URL.revokeObjectURL(url); res(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('画像の読み込みに失敗しました')); };
+    img.src = url;
+  });
+}
+
+function canvasToBlob(canvas, type, quality) {
+  return new Promise(res => canvas.toBlob(res, type, quality));
+}
+
+async function processOneFile(file, settings) {
+  const isHeic = /\.(heic|heif)$/i.test(file.name) ||
+                 file.type === 'image/heic' || file.type === 'image/heif';
+  let blob = file;
+  let baseName = file.name.replace(/\.[^.]+$/, '');
+
+  /* --- HEIC conversion --- */
+  if (isHeic) {
+    const toType = settings.format === 'png'  ? 'image/png'  :
+                   settings.format === 'webp' ? 'image/webp' : 'image/jpeg';
+    const conv = await heic2any({ blob: file, toType, quality: settings.quality / 100 });
+    blob = Array.isArray(conv) ? conv[0] : conv;
+  }
+
+  /* --- Load on canvas --- */
+  const img = await loadImage(blob);
+  const maxPx = settings.maxSize;
+  const scale = Math.min(maxPx / img.naturalWidth, maxPx / img.naturalHeight);
+  const newW = scale < 1 ? Math.round(img.naturalWidth  * scale) : img.naturalWidth;
+  const newH = scale < 1 ? Math.round(img.naturalHeight * scale) : img.naturalHeight;
+
+  const canvas = document.createElement('canvas');
+  canvas.width  = newW;
+  canvas.height = newH;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled  = true;
+  ctx.imageSmoothingQuality  = 'high';
+  ctx.drawImage(img, 0, 0, newW, newH);
+
+  /* --- Output format --- */
+  let mimeType, ext;
+  const origExt = file.name.split('.').pop().toLowerCase();
+
+  if (settings.format === 'original') {
+    if (isHeic)                              { mimeType = 'image/jpeg'; ext = 'jpg';  }
+    else if (origExt === 'png')              { mimeType = 'image/png';  ext = 'png';  }
+    else if (origExt === 'webp')             { mimeType = 'image/webp'; ext = 'webp'; }
+    else if (origExt === 'gif')              { mimeType = 'image/png';  ext = 'png';  } // canvas can't encode GIF
+    else if (origExt === 'jpg' || origExt === 'jpeg') { mimeType = 'image/jpeg'; ext = origExt; }
+    else                                     { mimeType = 'image/jpeg'; ext = 'jpg';  }
+  } else {
+    const map = { jpg: ['image/jpeg','jpg'], png: ['image/png','png'], webp: ['image/webp','webp'] };
+    [mimeType, ext] = map[settings.format] || ['image/jpeg','jpg'];
+  }
+
+  let outBlob;
+  if (mimeType === 'image/png' && typeof UPNG !== 'undefined') {
+    try {
+      // 色数: quality=100 → 0（フルカラー無劣化）、それ以下 → 最大256色まで削減
+      const colorCount = settings.quality >= 100 ? 0 : Math.max(2, Math.round(settings.quality / 100 * 256));
+      const imageData = ctx.getImageData(0, 0, newW, newH);
+      // SharedArrayBuffer 対策: slice でコピーを作成してから渡す
+      const buf = imageData.data.buffer.slice(0);
+      const pngBuf = UPNG.encode([buf], newW, newH, colorCount);
+      outBlob = new Blob([pngBuf], { type: 'image/png' });
+    } catch (e) {
+      console.warn('UPNG encode failed, fallback to canvas:', e);
+      outBlob = await canvasToBlob(canvas, 'image/png');
+    }
+  } else {
+    const quality = mimeType === 'image/png' ? undefined : settings.quality / 100;
+    outBlob = await canvasToBlob(canvas, mimeType, quality);
+  }
+
+  /* --- Output filename --- */
+  let filename;
+  if (settings.saveMethod === 'prefix') {
+    filename = `${settings.prefix}${baseName}.${ext}`;
+  } else if (settings.saveMethod === 'suffix') {
+    filename = `${baseName}${settings.suffix}.${ext}`;
+  } else {
+    filename = `${baseName}.${ext}`;
+  }
+
+  return { blob: outBlob, filename, dimensions: `${newW}×${newH}`, size: outBlob.size };
+}
+
+/* ===== Process button ===== */
+processBtn.addEventListener('click', async () => {
+  if (processing || files.length === 0) return;
+
+  const maxSize = isCustom ? parseInt(customSizeIn.value) : selectedSize;
+  if (!maxSize || maxSize < 10) { alert('リサイズサイズを正しく入力してください。'); return; }
+
+  const settings = {
+    maxSize,
+    format:     selectedFormat,
+    quality:    parseInt(qualityRange.value),
+    saveMethod,
+    prefix:     prefixIn.value,
+    suffix:     suffixIn.value,
+  };
+
+  processing = true;
+  processBtn.disabled = true;
+  processBtn.textContent = '処理中...';
+  progressWrap.style.display = '';
+  zipRow.style.display = 'none';
+  results = new Array(files.length);
+
+  const items = fileListEl.querySelectorAll('.file-item');
+
+  for (let i = 0; i < files.length; i++) {
+    progressText.textContent = `変換中: ${i + 1} / ${files.length}`;
+    progressBar.style.width  = `${(i / files.length) * 100}%`;
+
+    const statusEl = items[i]?.querySelector('.file-status');
+    if (statusEl) { statusEl.className = 'file-status status-processing'; statusEl.textContent = '処理中...'; }
+
+    try {
+      results[i] = await processOneFile(files[i], settings);
+      if (statusEl) {
+        statusEl.className = 'file-status status-done';
+        statusEl.textContent = results[i].dimensions;
+      }
+      const metaEl = items[i]?.querySelector('.file-meta');
+      if (metaEl) metaEl.innerHTML = buildSizeMeta(files[i].size, results[i].size);
+      const dlBtn = items[i]?.querySelector('.file-dl');
+      if (dlBtn) dlBtn.style.display = '';
+    } catch (err) {
+      console.error(err);
+      results[i] = { error: err.message };
+      if (statusEl) { statusEl.className = 'file-status status-error'; statusEl.textContent = 'エラー'; }
+    }
+  }
+
+  const ok = results.filter(r => r && !r.error).length;
+  progressBar.style.width  = '100%';
+  progressText.textContent = `完了: ${ok} 枚成功 / ${files.length} 枚`;
+
+  processing = false;
+  processBtn.disabled = false;
+  processBtn.textContent = '▶ リサイズ開始';
+  refreshActionButtons();
+});
+
+/* ===== Download (ZIP) ===== */
+downloadBtn.addEventListener('click', async () => {
+  const good = results.filter(r => r && !r.error);
+  if (!good.length) return;
+
+  downloadBtn.disabled = true;
+  downloadBtn.textContent = 'ZIP 作成中...';
+
+  try {
+    const zip  = new JSZip();
+    const name = folderNameIn.value.trim() || 'resized';
+
+    if (saveMethod === 'folder') {
+      const folder = zip.folder(name);
+      good.forEach(r => folder.file(r.filename, r.blob));
+    } else {
+      good.forEach(r => zip.file(r.filename, r.blob));
+    }
+
+    const content = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(content);
+    a.download = saveMethod === 'folder' ? `${name}.zip` : 'resized_images.zip';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  } finally {
+    downloadBtn.disabled = false;
+    downloadBtn.textContent = '⬇ まとめて ZIP でダウンロード';
+  }
+});
+
+</script>
+</body>
+</html>

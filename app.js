@@ -5,6 +5,7 @@ let files = [];
 let results = [];
 let selectedSize = 1024;
 let isCustom = false;
+let noResize = false;
 let selectedFormat = 'original';
 let saveMethod = 'folder';
 let processing = false;
@@ -27,6 +28,7 @@ const qualityRange = document.getElementById('qualityRange');
 const qualityVal   = document.getElementById('qualityVal');
 const qualityGroup = document.getElementById('qualityGroup');
 const customBtn   = document.getElementById('customBtn');
+const noResizeBtn = document.getElementById('noResizeBtn');
 const customWrap  = document.getElementById('customWrap');
 const customSizeIn = document.getElementById('customSize');
 const folderNameIn = document.getElementById('folderName');
@@ -38,9 +40,18 @@ document.getElementById('sizeButtons').addEventListener('click', e => {
   const btn = e.target.closest('.size-btn');
   if (!btn) return;
 
+  document.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  isCustom = false;
+  noResize = false;
+  customWrap.classList.remove('visible');
+
+  if (btn === noResizeBtn) {
+    noResize = true;
+    return;
+  }
+
   if (btn === customBtn) {
-    document.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
-    customBtn.classList.add('active');
     customWrap.classList.add('visible');
     isCustom = true;
     const v = parseInt(customSizeIn.value, 10);
@@ -49,12 +60,7 @@ document.getElementById('sizeButtons').addEventListener('click', e => {
   }
 
   const size = parseInt(btn.dataset.size, 10);
-  if (isNaN(size)) return;
-  document.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  selectedSize = size;
-  isCustom = false;
-  customWrap.classList.remove('visible');
+  if (!isNaN(size)) selectedSize = size;
 });
 
 customSizeIn.addEventListener('input', () => {
@@ -266,10 +272,15 @@ async function processOneFile(file, settings) {
 
   /* --- Load on canvas --- */
   const img = await loadImage(blob);
-  const maxPx = settings.maxSize;
-  const scale = Math.min(maxPx / img.naturalWidth, maxPx / img.naturalHeight);
-  const newW = scale < 1 ? Math.round(img.naturalWidth  * scale) : img.naturalWidth;
-  const newH = scale < 1 ? Math.round(img.naturalHeight * scale) : img.naturalHeight;
+  let newW, newH;
+  if (settings.maxSize === null) {
+    newW = img.naturalWidth;
+    newH = img.naturalHeight;
+  } else {
+    const scale = Math.min(settings.maxSize / img.naturalWidth, settings.maxSize / img.naturalHeight);
+    newW = scale < 1 ? Math.round(img.naturalWidth  * scale) : img.naturalWidth;
+    newH = scale < 1 ? Math.round(img.naturalHeight * scale) : img.naturalHeight;
+  }
 
   const canvas = document.createElement('canvas');
   canvas.width  = newW;
@@ -331,8 +342,8 @@ async function processOneFile(file, settings) {
 processBtn.addEventListener('click', async () => {
   if (processing || files.length === 0) return;
 
-  const maxSize = isCustom ? parseInt(customSizeIn.value, 10) : selectedSize;
-  if (!maxSize || maxSize < 10) {
+  const maxSize = noResize ? null : (isCustom ? parseInt(customSizeIn.value, 10) : selectedSize);
+  if (!noResize && (!maxSize || maxSize < 10)) {
     alert('リサイズサイズを正しく入力してください。');
     return;
   }

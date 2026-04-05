@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>縮小ツール</title>
+<title>画像変換＆縮小ツール by yk-igrek</title>
 <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/upng-js@2.1.0/UPNG.js"></script>
@@ -11,17 +11,17 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --primary: #4f46e5;
-  --primary-hover: #4338ca;
-  --bg: #f1f5f9;
+  --primary: #3ca1a2;
+  --primary-hover: #2e8a8b;
+  --bg: #f0fafa;
   --surface: #ffffff;
-  --border: #e2e8f0;
-  --text: #0f172a;
-  --text-muted: #64748b;
+  --border: #b2dede;
+  --text: #0f2929;
+  --text-muted: #5a8080;
   --success: #10b981;
   --error: #ef4444;
-  --drop-bg: #eef2ff;
-  --drop-border: #a5b4fc;
+  --drop-bg: #e6f7f7;
+  --drop-border: #7ec9ca;
 }
 
 body {
@@ -341,8 +341,8 @@ input[type="range"] { width: 100%; accent-color: var(--primary); cursor: pointer
 <div class="container">
 
   <header>
-    <h1>縮小ツール</h1>
-    <p class="subtitle">HEIC / JPG / PNG / WebP 対応 ― ドラッグ＆ドロップで一括リサイズ</p>
+    <h1>画像変換＆縮小ツール by yk-igrek</h1>
+    <p class="subtitle">HEIC / JPG / PNG / WebP 対応 ― ドラッグ＆ドロップで一括変換！リサイズ＆軽量化も行います</p>
   </header>
 
   <!-- Drop Zone -->
@@ -413,10 +413,10 @@ input[type="range"] { width: 100%; accent-color: var(--primary); cursor: pointer
           <label class="setting-label">
             <span class="quality-label-row">
               <span id="qualityLabel">品質（JPG / WebP）</span>
-              <span id="qualityVal">90</span>%
+              <span id="qualityVal">82</span>%
             </span>
           </label>
-          <input type="range" id="qualityRange" min="1" max="100" value="90">
+          <input type="range" id="qualityRange" min="1" max="100" value="82">
           <p id="qualityNote" style="font-size:0.76rem; color:var(--text-muted); margin-top:6px; display:none">
             100% = フルカラー（無劣化）／ 下げると色数を減らして軽量化します
           </p>

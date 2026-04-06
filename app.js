@@ -259,6 +259,18 @@ function canvasToBlob(canvas, type, quality) {
   return new Promise(res => canvas.toBlob(res, type, quality));
 }
 
+// ブラウザが HEIC をネイティブデコードできるか確認（3秒タイムアウト）
+async function checkNativeHeic(file) {
+  try {
+    const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 3000));
+    const bmp = await Promise.race([createImageBitmap(file), timeout]);
+    bmp.close();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function processOneFile(file, settings) {
   const isHeic = /\.(heic|heif)$/i.test(file.name) ||
                  file.type === 'image/heic' || file.type === 'image/heif';
@@ -267,24 +279,30 @@ async function processOneFile(file, settings) {
 
   /* --- HEIC conversion --- */
   if (isHeic) {
-    if (typeof heic2any === 'undefined') {
-      throw new Error('HEICライブラリが読み込まれていません。ページを再読み込みしてください。');
-    }
-    const toType = settings.format === 'png'  ? 'image/png'  :
-                   settings.format === 'webp' ? 'image/webp' : 'image/jpeg';
-    // タイムアウト付きで変換（大きいファイルは時間がかかるため90秒）
-    const timeoutMs = 90_000;
-    const timeout = new Promise((_, rej) =>
-      setTimeout(() => rej(new Error('HEIC変換がタイムアウトしました（90秒）。ファイルサイズを確認してください。')), timeoutMs)
-    );
-    try {
-      const conv = await Promise.race([
-        heic2any({ blob: file, toType, quality: settings.quality / 100 }),
-        timeout,
-      ]);
-      blob = Array.isArray(conv) ? conv[0] : conv;
-    } catch (e) {
-      throw new Error(`HEIC変換失敗: ${e.message ?? e}`);
+    // まずブラウザのネイティブ対応を確認（Chrome 117+・Safari は HEIC をそのまま読める）
+    const nativeOk = await checkNativeHeic(file);
+
+    if (nativeOk) {
+      // ネイティブ対応：blob はそのまま（loadImage でそのまま読み込める）
+    } else {
+      // ネイティブ非対応：heic2any でデコード
+      if (typeof heic2any === 'undefined') {
+        throw new Error('HEICの変換に対応していないブラウザです。ChromeまたはSafariをお試しください。');
+      }
+      const toType = settings.format === 'png'  ? 'image/png'  :
+                     settings.format === 'webp' ? 'image/webp' : 'image/jpeg';
+      const timeout = new Promise((_, rej) =>
+        setTimeout(() => rej(new Error('HEIC変換がタイムアウトしました。ファイルサイズを確認してください。')), 60_000)
+      );
+      try {
+        const conv = await Promise.race([
+          heic2any({ blob: file, toType, quality: settings.quality / 100 }),
+          timeout,
+        ]);
+        blob = Array.isArray(conv) ? conv[0] : conv;
+      } catch (e) {
+        throw new Error(`HEIC変換失敗: ${e.message ?? e}`);
+      }
     }
   }
 

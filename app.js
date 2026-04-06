@@ -462,7 +462,8 @@ processBtn.addEventListener('click', async () => {
       results[i] = { error: err.message };
       if (statusEl) {
         statusEl.className = 'file-status status-error';
-        statusEl.textContent = 'エラー';
+        statusEl.title = err.message;
+        statusEl.textContent = `エラー: ${err.message.slice(0, 40)}`;
       }
     }
   }

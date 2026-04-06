@@ -259,19 +259,69 @@ function canvasToBlob(canvas, type, quality) {
   return new Promise(res => canvas.toBlob(res, type, quality));
 }
 
-// HEIC デコード（3段階フォールバック）
+// libheif-js を使った HEIC デコード（iOS 最新 HEIC 対応）
+let _libheifModule = null;
+async function getLibheifModule() {
+  if (_libheifModule) return _libheifModule;
+  if (typeof libheif === 'undefined') throw new Error('libheif not loaded');
+
+  // ブラウザは WASM の同期 fetch を禁止しているため、先に fetch してバイナリを渡す
+  const wasmUrl = 'https://cdn.jsdelivr.net/npm/libheif-js@1.18.2/libheif-wasm/libheif.wasm';
+  const res = await fetch(wasmUrl);
+  if (!res.ok) throw new Error(`WASM fetch failed: ${res.status}`);
+  const wasmBinary = await res.arrayBuffer();
+
+  // wasmBinary を渡すと WASM が同期的に初期化されるため、await するだけでよい
+  _libheifModule = await libheif({ wasmBinary });
+  if (!_libheifModule || !_libheifModule.HeifDecoder) throw new Error('libheif init failed');
+  return _libheifModule;
+}
+
+async function decodeWithLibheif(file) {
+  const lib = await getLibheifModule();
+  const decoder = new lib.HeifDecoder();
+  const uint8 = new Uint8Array(await file.arrayBuffer());
+  const images = decoder.decode(uint8);
+  if (!images || images.length === 0) throw new Error('No HEIC image data decoded');
+  const image = images[0];
+  const width  = image.get_width();
+  const height = image.get_height();
+  const canvas = document.createElement('canvas');
+  canvas.width  = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  // display() に渡す ImageData を作成。コールバックでピクセルが書き込まれる
+  const imageData = ctx.createImageData(width, height);
+  await new Promise((resolve, reject) => {
+    image.display(imageData, (result) => {
+      if (!result) { reject(new Error('libheif display failed')); return; }
+      try {
+        if (result instanceof ImageData) {
+          ctx.putImageData(result, 0, 0);
+        } else {
+          // display が plain object を返す場合（{data, width, height}）
+          ctx.putImageData(new ImageData(new Uint8ClampedArray(result.data.buffer), result.width, result.height), 0, 0);
+        }
+        resolve();
+      } catch (e) { reject(e); }
+    });
+  });
+  return canvas;
+}
+
+// HEIC デコード（4段階フォールバック）
 async function loadHeic(file, quality) {
   // 1. ImageDecoder API (Chrome 94+ / Safari 16.4+) ― ライブラリ不要・最速
+  //    isTypeSupported のチェックは省略し、直接試みる（Windows Chrome では false でも動作する場合あり）
   if ('ImageDecoder' in window) {
     for (const type of ['image/heic', 'image/heif']) {
       try {
-        const supported = await ImageDecoder.isTypeSupported(type);
-        if (!supported) continue;
-        const decoder = new ImageDecoder({ data: file.stream(), type });
+        const ab = await file.arrayBuffer();
+        const decoder = new ImageDecoder({ data: ab, type });
         const { image } = await decoder.decode({ frameIndex: 0 });
         return { drawable: image, dw: image.width, dh: image.height };
       } catch (e) {
-        console.warn('ImageDecoder failed:', e);
+        console.warn(`ImageDecoder(${type}) failed:`, e.message ?? e);
       }
     }
   }
@@ -283,7 +333,16 @@ async function loadHeic(file, quality) {
     if (img.naturalWidth > 0) return { drawable: img, dw: img.naturalWidth, dh: img.naturalHeight };
   } catch {}
 
-  // 3. heic2any フォールバック
+  // 3. libheif-js（新しい libheif — iOS 最新 HEIC・HEVC コーデック対応）
+  try {
+    const canvas = await decodeWithLibheif(file);
+    console.log('libheif-js: decode succeeded');
+    return { drawable: canvas, dw: canvas.width, dh: canvas.height };
+  } catch (e) {
+    console.warn('libheif-js failed:', e.message ?? e);
+  }
+
+  // 4. heic2any フォールバック
   if (typeof heic2any === 'undefined') {
     throw new Error('HEICの変換に失敗しました。ChromeまたはSafariをお試しください。');
   }

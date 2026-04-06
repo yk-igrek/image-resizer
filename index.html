@@ -13,7 +13,8 @@
   ">
   <title>画像変換＆縮小ツール by yk-igrek</title>
   <link rel="stylesheet" href="style.css">
-  <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" crossorigin="anonymous" defer></script>
+  <!-- heic2any は WASM を使うため defer なしで先に読み込む -->
+  <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" crossorigin="anonymous" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/upng-js@2.1.0/UPNG.js" crossorigin="anonymous" defer></script>
   <script src="app.js" defer></script>

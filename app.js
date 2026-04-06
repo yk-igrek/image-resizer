@@ -269,8 +269,16 @@ async function processOneFile(file, settings) {
     }
     const toType = settings.format === 'png'  ? 'image/png'  :
                    settings.format === 'webp' ? 'image/webp' : 'image/jpeg';
+    // タイムアウト付きで変換（大きいファイルは時間がかかるため90秒）
+    const timeoutMs = 90_000;
+    const timeout = new Promise((_, rej) =>
+      setTimeout(() => rej(new Error('HEIC変換がタイムアウトしました（90秒）。ファイルサイズを確認してください。')), timeoutMs)
+    );
     try {
-      const conv = await heic2any({ blob: file, toType, quality: settings.quality / 100 });
+      const conv = await Promise.race([
+        heic2any({ blob: file, toType, quality: settings.quality / 100 }),
+        timeout,
+      ]);
       blob = Array.isArray(conv) ? conv[0] : conv;
     } catch (e) {
       throw new Error(`HEIC変換失敗: ${e.message ?? e}`);
@@ -378,9 +386,10 @@ processBtn.addEventListener('click', async () => {
     progressBar.style.width  = `${(i / files.length) * 100}%`;
 
     const statusEl = items[i]?.querySelector('.file-status');
+    const isHeicFile = /\.(heic|heif)$/i.test(files[i].name);
     if (statusEl) {
       statusEl.className = 'file-status status-processing';
-      statusEl.textContent = '処理中...';
+      statusEl.textContent = isHeicFile ? 'HEIC変換中…' : '処理中...';
     }
 
     try {

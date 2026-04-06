@@ -264,10 +264,17 @@ async function processOneFile(file, settings) {
 
   /* --- HEIC conversion --- */
   if (isHeic) {
+    if (typeof heic2any === 'undefined') {
+      throw new Error('HEICライブラリが読み込まれていません。ページを再読み込みしてください。');
+    }
     const toType = settings.format === 'png'  ? 'image/png'  :
                    settings.format === 'webp' ? 'image/webp' : 'image/jpeg';
-    const conv = await heic2any({ blob: file, toType, quality: settings.quality / 100 });
-    blob = Array.isArray(conv) ? conv[0] : conv;
+    try {
+      const conv = await heic2any({ blob: file, toType, quality: settings.quality / 100 });
+      blob = Array.isArray(conv) ? conv[0] : conv;
+    } catch (e) {
+      throw new Error(`HEIC変換失敗: ${e.message ?? e}`);
+    }
   }
 
   /* --- Load on canvas --- */

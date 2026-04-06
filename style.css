@@ -278,9 +278,12 @@ input[type="range"] { width: 100%; accent-color: var(--primary); cursor: pointer
   font-size: 0.82rem;
   border-radius: 7px;
   border: 1.5px solid var(--border);
-  display: none;
+  background: var(--surface);
+  cursor: pointer;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
 }
-.file-dl.visible { display: inline-flex; }
 .file-dl:hover { border-color: var(--primary); color: var(--primary); }
 
 .file-remove {

@@ -167,8 +167,11 @@ function renderFileList() {
     const isHeic = /\.(heic|heif)$/i.test(f.name);
     const statusClass = !res ? 'status-pending' : res.error ? 'status-error' : 'status-done';
     const statusText  = !res ? '待機中' : res.error ? 'エラー' : res.dimensions;
-    const dlClass     = (res && !res.error) ? 'file-dl btn btn-secondary btn-sm visible' : 'file-dl btn btn-secondary btn-sm';
     const metaText    = (res && !res.error) ? buildSizeMeta(f.size, res.size) : formatBytes(f.size);
+    // 処理済みのときだけダウンロードボタンを出力する
+    const dlButton    = (res && !res.error)
+      ? `<button class="file-dl btn btn-secondary btn-sm" data-idx="${i}" type="button">⬇ ダウンロード</button>`
+      : '';
 
     const item = document.createElement('div');
     item.className = 'file-item';
@@ -180,7 +183,7 @@ function renderFileList() {
         <div class="file-meta">${metaText}</div>
       </div>
       <span class="file-status ${statusClass}">${statusText}</span>
-      <button class="${dlClass}" data-idx="${i}" type="button">⬇ ダウンロード</button>
+      ${dlButton}
       <button class="file-remove" data-idx="${i}" type="button" title="削除">✕</button>
     `;
     // ファイル名はtextContentで設定してXSSを防ぐ
@@ -400,8 +403,29 @@ processBtn.addEventListener('click', async () => {
       }
       const metaEl = items[i]?.querySelector('.file-meta');
       if (metaEl) metaEl.innerHTML = buildSizeMeta(files[i].size, results[i].size);
-      const dlBtn = items[i]?.querySelector('.file-dl');
-      if (dlBtn) dlBtn.classList.add('visible');
+      // 処理完了後にダウンロードボタンを挿入（削除ボタンの直前）
+      const removeBtn = items[i]?.querySelector('.file-remove');
+      if (removeBtn && !items[i].querySelector('.file-dl')) {
+        const dlBtn = document.createElement('button');
+        dlBtn.className = 'file-dl btn btn-secondary btn-sm';
+        dlBtn.dataset.idx = String(i);
+        dlBtn.type = 'button';
+        dlBtn.textContent = '⬇ ダウンロード';
+        dlBtn.addEventListener('click', e => {
+          e.stopPropagation();
+          const r = results[+dlBtn.dataset.idx];
+          if (!r || r.error) return;
+          const url = URL.createObjectURL(r.blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = r.filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 2000);
+        });
+        removeBtn.before(dlBtn);
+      }
     } catch (err) {
       console.error(err);
       results[i] = { error: err.message };

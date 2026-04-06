@@ -259,48 +259,76 @@ function canvasToBlob(canvas, type, quality) {
   return new Promise(res => canvas.toBlob(res, type, quality));
 }
 
+// HEIC デコード（3段階フォールバック）
+async function loadHeic(file, quality) {
+  // 1. ImageDecoder API (Chrome 94+ / Safari 16.4+) ― ライブラリ不要・最速
+  if ('ImageDecoder' in window) {
+    for (const type of ['image/heic', 'image/heif']) {
+      try {
+        const supported = await ImageDecoder.isTypeSupported(type);
+        if (!supported) continue;
+        const decoder = new ImageDecoder({ data: file.stream(), type });
+        const { image } = await decoder.decode({ frameIndex: 0 });
+        return { drawable: image, dw: image.width, dh: image.height };
+      } catch (e) {
+        console.warn('ImageDecoder failed:', e);
+      }
+    }
+  }
+
+  // 2. ネイティブ <img> ロード（5秒タイムアウト）
+  try {
+    const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 5000));
+    const img = await Promise.race([loadImage(file), timeout]);
+    if (img.naturalWidth > 0) return { drawable: img, dw: img.naturalWidth, dh: img.naturalHeight };
+  } catch {}
+
+  // 3. heic2any フォールバック
+  if (typeof heic2any === 'undefined') {
+    throw new Error('HEICの変換に失敗しました。ChromeまたはSafariをお試しください。');
+  }
+  const timeout = new Promise((_, rej) =>
+    setTimeout(() => rej(new Error('HEIC変換がタイムアウトしました。')), 60_000)
+  );
+  try {
+    const conv = await Promise.race([
+      heic2any({ blob: file, toType: 'image/jpeg', quality }),
+      timeout,
+    ]);
+    const blob = Array.isArray(conv) ? conv[0] : conv;
+    const img = await loadImage(blob);
+    return { drawable: img, dw: img.naturalWidth, dh: img.naturalHeight };
+  } catch (e) {
+    throw new Error(`HEIC変換失敗: ${e.message ?? e}`);
+  }
+}
+
 async function processOneFile(file, settings) {
   const isHeic = /\.(heic|heif)$/i.test(file.name) ||
                  file.type === 'image/heic' || file.type === 'image/heif';
   const baseName = file.name.replace(/\.[^.]+$/, '');
-  let blob = file;
 
-  /* --- 画像ロード（HEIC はネイティブ失敗時に heic2any へフォールバック） --- */
-  let img;
-  try {
-    // ネイティブロードを試みる（Chrome/Safari on Mac は HEIC をそのまま読める）
-    img = await loadImage(file);
-  } catch (loadErr) {
-    if (!isHeic) throw new Error('画像の読み込みに失敗しました');
+  /* --- 画像ソース取得 --- */
+  // drawable: ctx.drawImage() に渡せる HTMLImageElement または ImageBitmap
+  // dw / dh:  元の幅・高さ
+  let drawable, dw, dh;
 
-    // HEIC ネイティブ非対応 → heic2any でデコード
-    if (typeof heic2any === 'undefined') {
-      throw new Error('HEICの変換に対応していないブラウザです。ChromeまたはSafariをお試しください。');
-    }
-    const toType = settings.format === 'png'  ? 'image/png'  :
-                   settings.format === 'webp' ? 'image/webp' : 'image/jpeg';
-    const timeout = new Promise((_, rej) =>
-      setTimeout(() => rej(new Error('HEIC変換がタイムアウトしました。ファイルサイズを確認してください。')), 60_000)
-    );
-    try {
-      const conv = await Promise.race([
-        heic2any({ blob: file, toType, quality: settings.quality / 100 }),
-        timeout,
-      ]);
-      blob = Array.isArray(conv) ? conv[0] : conv;
-    } catch (e) {
-      throw new Error(`HEIC変換失敗: ${e.message ?? e}`);
-    }
-    img = await loadImage(blob);
+  if (isHeic) {
+    ({ drawable, dw, dh } = await loadHeic(file, settings.quality / 100));
+  } else {
+    const img = await loadImage(file);
+    drawable = img;
+    dw = img.naturalWidth;
+    dh = img.naturalHeight;
   }
   let newW, newH;
   if (settings.maxSize === null) {
-    newW = img.naturalWidth;
-    newH = img.naturalHeight;
+    newW = dw;
+    newH = dh;
   } else {
-    const scale = Math.min(settings.maxSize / img.naturalWidth, settings.maxSize / img.naturalHeight);
-    newW = scale < 1 ? Math.round(img.naturalWidth  * scale) : img.naturalWidth;
-    newH = scale < 1 ? Math.round(img.naturalHeight * scale) : img.naturalHeight;
+    const scale = Math.min(settings.maxSize / dw, settings.maxSize / dh);
+    newW = scale < 1 ? Math.round(dw * scale) : dw;
+    newH = scale < 1 ? Math.round(dh * scale) : dh;
   }
 
   const canvas = document.createElement('canvas');
@@ -309,7 +337,7 @@ async function processOneFile(file, settings) {
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(img, 0, 0, newW, newH);
+  ctx.drawImage(drawable, 0, 0, newW, newH);
 
   /* --- Output format --- */
   let mimeType, ext;

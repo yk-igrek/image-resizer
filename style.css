@@ -201,6 +201,7 @@ input[type="range"] { width: 100%; accent-color: var(--primary); cursor: pointer
   font-size: 0.8rem;
   color: var(--text-muted);
 }
+.after-filename::before { content: "+ "; }
 .save-option-row input[type="text"] {
   padding: 4px 8px;
   font-size: 0.8rem;

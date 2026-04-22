@@ -101,38 +101,38 @@
           <label class="setting-label">保存方法</label>
           <div class="save-options">
 
-            <label class="save-option active" id="optFolder">
-              <input type="radio" name="saveMethod" value="folder" checked>
+            <div class="save-option active" id="optFolder">
+              <input type="radio" name="saveMethod" id="radioFolder" value="folder" checked>
               <div class="save-option-body">
-                <div class="save-option-title">📁 フォルダに保存</div>
+                <label class="save-option-title" for="radioFolder">📁 フォルダに保存</label>
                 <div class="save-option-row">
                   <span>フォルダ名:</span>
-                  <input type="text" id="folderName" value="resized" maxlength="60">
+                  <input type="text" id="folderName" value="resized" maxlength="60" aria-label="フォルダ名">
                 </div>
               </div>
-            </label>
+            </div>
 
-            <label class="save-option" id="optPrefix">
-              <input type="radio" name="saveMethod" value="prefix">
+            <div class="save-option" id="optPrefix">
+              <input type="radio" name="saveMethod" id="radioPrefix" value="prefix">
               <div class="save-option-body">
-                <div class="save-option-title">ファイル名の前に名前を追加</div>
+                <label class="save-option-title" for="radioPrefix">ファイル名の前に名前を追加</label>
                 <div class="save-option-row">
-                  <input type="text" id="prefixText" value="resized_" maxlength="40">
+                  <input type="text" id="prefixText" value="resized_" maxlength="40" aria-label="ファイル名の前に追加するテキスト">
                   <span>+ 元のファイル名</span>
                 </div>
               </div>
-            </label>
+            </div>
 
-            <label class="save-option" id="optSuffix">
-              <input type="radio" name="saveMethod" value="suffix">
+            <div class="save-option" id="optSuffix">
+              <input type="radio" name="saveMethod" id="radioSuffix" value="suffix">
               <div class="save-option-body">
-                <div class="save-option-title">ファイル名の後に名前を追加</div>
+                <label class="save-option-title" for="radioSuffix">ファイル名の後に名前を追加</label>
                 <div class="save-option-row">
                   <span>元のファイル名 +</span>
-                  <input type="text" id="suffixText" value="_resized" maxlength="40">
+                  <input type="text" id="suffixText" value="_resized" maxlength="40" aria-label="ファイル名の後に追加するテキスト">
                 </div>
               </div>
-            </label>
+            </div>
 
           </div>
         </div>

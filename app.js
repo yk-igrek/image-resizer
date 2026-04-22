@@ -433,6 +433,18 @@ async function processOneFile(file, settings) {
     outBlob = await canvasToBlob(canvas, mimeType, quality);
   }
 
+  /* --- サイズ比較: 出力が元より大きければ元ファイルを使用 --- */
+  if (!isHeic && outBlob.size > file.size) {
+    // 「変更なし」選択時: 形式に関わらず元ファイルを使用し拡張子も戻す
+    if (settings.maxSize === null) {
+      outBlob = new Blob([file], { type: file.type });
+      ext = origExt;
+    // リサイズなし・形式変換なしの場合も元ファイルを使用
+    } else if (settings.format === 'original' && newW === dw && newH === dh) {
+      outBlob = new Blob([file], { type: file.type });
+    }
+  }
+
   /* --- Output filename --- */
   let filename;
   if (settings.saveMethod === 'prefix') {

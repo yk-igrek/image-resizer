@@ -266,7 +266,7 @@ async function getLibheifModule() {
   if (typeof libheif === 'undefined') throw new Error('libheif not loaded');
 
   // ブラウザは WASM の同期 fetch を禁止しているため、先に fetch してバイナリを渡す
-  const wasmUrl = 'https://cdn.jsdelivr.net/npm/libheif-js@1.18.2/libheif-wasm/libheif.wasm';
+  const wasmUrl = 'https://cdn.jsdelivr.net/npm/libheif-js@1.19.8/libheif-wasm/libheif.wasm';
   const res = await fetch(wasmUrl);
   if (!res.ok) throw new Error(`WASM fetch failed: ${res.status}`);
   const wasmBinary = await res.arrayBuffer();

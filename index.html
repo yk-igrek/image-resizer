@@ -32,8 +32,11 @@
   <script src="https://cdn.jsdelivr.net/npm/libheif-js@1.19.8/libheif-wasm/libheif.js" integrity="sha384-4aewVAT9+1ZrswinEAr3J9FURRUOTzNChbMxwoKnNfRLOM0xnyAMS39olsIggmAa" crossorigin="anonymous" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" integrity="sha384-OTofQ0MEeiSgh62havBcemCIK0gqj809wX6UA0uPISNMRnR6NZyCdGzX3SbLrgwL" crossorigin="anonymous" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous" defer></script>
+  <!-- pako は UPNG.js の圧縮に必須（先に読み込むこと） -->
+  <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js" integrity="sha384-rNlaE5fs9dGIjmxWDALQh/RBAaGRYT5ChrzHo6tRfgrZ36iRFAiquP5g41Jsv+0j" crossorigin="anonymous" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/upng-js@2.1.0/UPNG.js" integrity="sha384-5zRBkJ6IHy9ezWHX/cBuwC0SnrK23Cfx6G6kIjwR5no9khaSv2md2ZHMXphI3UCB" crossorigin="anonymous" defer></script>
-  <script src="app.js" defer></script>
+  <!-- ES モジュール（image-processor.js から WASM エンコーダーを動的 import） -->
+  <script type="module" src="app.js"></script>
 </head>
 <body>
 <div class="container">

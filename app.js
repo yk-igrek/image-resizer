@@ -1,4 +1,9 @@
-'use strict';
+/* =====================================================================
+ * app.js — UI・状態管理
+ * 画像の変換処理本体は image-processor.js に分離
+ * ===================================================================== */
+
+import { processOneFile } from './image-processor.js';
 
 /* ===== State ===== */
 let files = [];
@@ -137,6 +142,36 @@ clearBtn.addEventListener('click', () => {
   updateUI();
 });
 
+/* ===== Download helpers ===== */
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+// ファイル一覧内のボタンはイベント委譲で一括処理（再描画・後付けボタンにも効く）
+fileListEl.addEventListener('click', e => {
+  const dlBtn = e.target.closest('.file-dl');
+  if (dlBtn) {
+    const r = results[+dlBtn.dataset.idx];
+    if (r && !r.error) triggerDownload(r.blob, r.filename);
+    return;
+  }
+  const rmBtn = e.target.closest('.file-remove');
+  if (rmBtn) {
+    files.splice(+rmBtn.dataset.idx, 1);
+    results = [];
+    renderFileList();
+    updateUI();
+  }
+});
+
+/* ===== Rendering ===== */
 function formatBytes(b) {
   if (b < 1024) return b + ' B';
   if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
@@ -203,32 +238,6 @@ function renderFileList() {
       ph.replaceWith(img);
     }
   });
-
-  fileListEl.querySelectorAll('.file-dl').forEach(btn => {
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      const r = results[+btn.dataset.idx];
-      if (!r || r.error) return;
-      const url = URL.createObjectURL(r.blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = r.filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
-    });
-  });
-
-  fileListEl.querySelectorAll('.file-remove').forEach(btn => {
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      files.splice(+btn.dataset.idx, 1);
-      results = [];
-      renderFileList();
-      updateUI();
-    });
-  });
 }
 
 function updateUI() {
@@ -242,220 +251,6 @@ function updateUI() {
 function refreshActionButtons() {
   const hasResults = results.length > 0 && results.some(r => r && !r.error);
   zipRow.classList.toggle('visible', hasResults);
-}
-
-/* ===== Image processing helpers ===== */
-function loadImage(blob) {
-  return new Promise((res, rej) => {
-    const url = URL.createObjectURL(blob);
-    const img = new Image();
-    img.onload  = () => { URL.revokeObjectURL(url); res(img); };
-    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('画像の読み込みに失敗しました')); };
-    img.src = url;
-  });
-}
-
-function canvasToBlob(canvas, type, quality) {
-  return new Promise(res => canvas.toBlob(res, type, quality));
-}
-
-// libheif-js を使った HEIC デコード（iOS 最新 HEIC 対応）
-let _libheifModule = null;
-async function getLibheifModule() {
-  if (_libheifModule) return _libheifModule;
-  if (typeof libheif === 'undefined') throw new Error('libheif not loaded');
-
-  // ブラウザは WASM の同期 fetch を禁止しているため、先に fetch してバイナリを渡す
-  const wasmUrl = 'https://cdn.jsdelivr.net/npm/libheif-js@1.19.8/libheif-wasm/libheif.wasm';
-  const res = await fetch(wasmUrl);
-  if (!res.ok) throw new Error(`WASM fetch failed: ${res.status}`);
-  const wasmBinary = await res.arrayBuffer();
-
-  // wasmBinary を渡すと WASM が同期的に初期化されるため、await するだけでよい
-  _libheifModule = await libheif({ wasmBinary });
-  if (!_libheifModule || !_libheifModule.HeifDecoder) throw new Error('libheif init failed');
-  return _libheifModule;
-}
-
-async function decodeWithLibheif(file) {
-  const lib = await getLibheifModule();
-  const decoder = new lib.HeifDecoder();
-  const uint8 = new Uint8Array(await file.arrayBuffer());
-  const images = decoder.decode(uint8);
-  if (!images || images.length === 0) throw new Error('No HEIC image data decoded');
-  const image = images[0];
-  const width  = image.get_width();
-  const height = image.get_height();
-  const canvas = document.createElement('canvas');
-  canvas.width  = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d');
-  // display() に渡す ImageData を作成。コールバックでピクセルが書き込まれる
-  const imageData = ctx.createImageData(width, height);
-  await new Promise((resolve, reject) => {
-    image.display(imageData, (result) => {
-      if (!result) { reject(new Error('libheif display failed')); return; }
-      try {
-        if (result instanceof ImageData) {
-          ctx.putImageData(result, 0, 0);
-        } else {
-          // display が plain object を返す場合（{data, width, height}）
-          ctx.putImageData(new ImageData(new Uint8ClampedArray(result.data.buffer), result.width, result.height), 0, 0);
-        }
-        resolve();
-      } catch (e) { reject(e); }
-    });
-  });
-  return canvas;
-}
-
-// HEIC デコード（4段階フォールバック）
-async function loadHeic(file, quality) {
-  // 1. ImageDecoder API (Chrome 94+ / Safari 16.4+) ― ライブラリ不要・最速
-  //    isTypeSupported のチェックは省略し、直接試みる（Windows Chrome では false でも動作する場合あり）
-  if ('ImageDecoder' in window) {
-    for (const type of ['image/heic', 'image/heif']) {
-      try {
-        const ab = await file.arrayBuffer();
-        const decoder = new ImageDecoder({ data: ab, type });
-        const { image } = await decoder.decode({ frameIndex: 0 });
-        return { drawable: image, dw: image.width, dh: image.height };
-      } catch (e) {
-        console.warn(`ImageDecoder(${type}) failed:`, e.message ?? e);
-      }
-    }
-  }
-
-  // 2. ネイティブ <img> ロード（5秒タイムアウト）
-  try {
-    const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 5000));
-    const img = await Promise.race([loadImage(file), timeout]);
-    if (img.naturalWidth > 0) return { drawable: img, dw: img.naturalWidth, dh: img.naturalHeight };
-  } catch {}
-
-  // 3. libheif-js（新しい libheif — iOS 最新 HEIC・HEVC コーデック対応）
-  try {
-    const canvas = await decodeWithLibheif(file);
-    console.log('libheif-js: decode succeeded');
-    return { drawable: canvas, dw: canvas.width, dh: canvas.height };
-  } catch (e) {
-    console.warn('libheif-js failed:', e.message ?? e);
-  }
-
-  // 4. heic2any フォールバック
-  if (typeof heic2any === 'undefined') {
-    throw new Error('HEICの変換に失敗しました。ChromeまたはSafariをお試しください。');
-  }
-  const timeout = new Promise((_, rej) =>
-    setTimeout(() => rej(new Error('HEIC変換がタイムアウトしました。')), 60_000)
-  );
-  try {
-    const conv = await Promise.race([
-      heic2any({ blob: file, toType: 'image/jpeg', quality }),
-      timeout,
-    ]);
-    const blob = Array.isArray(conv) ? conv[0] : conv;
-    const img = await loadImage(blob);
-    return { drawable: img, dw: img.naturalWidth, dh: img.naturalHeight };
-  } catch (e) {
-    throw new Error(`HEIC変換失敗: ${e.message ?? e}`);
-  }
-}
-
-async function processOneFile(file, settings) {
-  const isHeic = /\.(heic|heif)$/i.test(file.name) ||
-                 file.type === 'image/heic' || file.type === 'image/heif';
-  const baseName = file.name.replace(/\.[^.]+$/, '');
-
-  /* --- 画像ソース取得 --- */
-  // drawable: ctx.drawImage() に渡せる HTMLImageElement または ImageBitmap
-  // dw / dh:  元の幅・高さ
-  let drawable, dw, dh;
-
-  if (isHeic) {
-    ({ drawable, dw, dh } = await loadHeic(file, settings.quality / 100));
-  } else {
-    const img = await loadImage(file);
-    drawable = img;
-    dw = img.naturalWidth;
-    dh = img.naturalHeight;
-  }
-  let newW, newH;
-  if (settings.maxSize === null) {
-    newW = dw;
-    newH = dh;
-  } else {
-    const scale = Math.min(settings.maxSize / dw, settings.maxSize / dh);
-    newW = scale < 1 ? Math.round(dw * scale) : dw;
-    newH = scale < 1 ? Math.round(dh * scale) : dh;
-  }
-
-  const canvas = document.createElement('canvas');
-  canvas.width  = newW;
-  canvas.height = newH;
-  const ctx = canvas.getContext('2d');
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(drawable, 0, 0, newW, newH);
-
-  /* --- Output format --- */
-  let mimeType, ext;
-  const origExt = file.name.split('.').pop().toLowerCase();
-
-  if (settings.format === 'original') {
-    if (isHeic)                                        { mimeType = 'image/jpeg'; ext = 'jpg';    }
-    else if (origExt === 'png')                        { mimeType = 'image/png';  ext = 'png';    }
-    else if (origExt === 'webp')                       { mimeType = 'image/webp'; ext = 'webp';   }
-    else if (origExt === 'gif')                        { mimeType = 'image/png';  ext = 'png';    }
-    else if (origExt === 'jpg' || origExt === 'jpeg')  { mimeType = 'image/jpeg'; ext = origExt;  }
-    else                                               { mimeType = 'image/jpeg'; ext = 'jpg';    }
-  } else {
-    const map = { jpg: ['image/jpeg','jpg'], png: ['image/png','png'], webp: ['image/webp','webp'] };
-    [mimeType, ext] = map[settings.format] || ['image/jpeg','jpg'];
-  }
-
-  /* --- Encode --- */
-  let outBlob;
-  if (mimeType === 'image/png' && typeof UPNG !== 'undefined') {
-    try {
-      // 色数: 100% → 0（フルカラー無劣化）、未満 → 最大256色まで削減
-      const colorCount = settings.quality >= 100 ? 0 : Math.max(2, Math.round(settings.quality / 100 * 256));
-      const imageData = ctx.getImageData(0, 0, newW, newH);
-      const buf = imageData.data.buffer.slice(0); // SharedArrayBuffer 対策
-      const pngBuf = UPNG.encode([buf], newW, newH, colorCount);
-      outBlob = new Blob([pngBuf], { type: 'image/png' });
-    } catch (e) {
-      console.warn('UPNG encode failed, fallback to canvas:', e);
-      outBlob = await canvasToBlob(canvas, 'image/png');
-    }
-  } else {
-    const quality = mimeType === 'image/png' ? undefined : settings.quality / 100;
-    outBlob = await canvasToBlob(canvas, mimeType, quality);
-  }
-
-  /* --- サイズ比較: 出力が元より大きければ元ファイルを使用 --- */
-  if (!isHeic && outBlob.size > file.size) {
-    // 「変更なし」選択時: 形式に関わらず元ファイルを使用し拡張子も戻す
-    if (settings.maxSize === null) {
-      outBlob = new Blob([file], { type: file.type });
-      ext = origExt;
-    // リサイズなし・形式変換なしの場合も元ファイルを使用
-    } else if (settings.format === 'original' && newW === dw && newH === dh) {
-      outBlob = new Blob([file], { type: file.type });
-    }
-  }
-
-  /* --- Output filename --- */
-  let filename;
-  if (settings.saveMethod === 'prefix') {
-    filename = `${settings.prefix}${baseName}.${ext}`;
-  } else if (settings.saveMethod === 'suffix') {
-    filename = `${baseName}${settings.suffix}.${ext}`;
-  } else {
-    filename = `${baseName}.${ext}`;
-  }
-
-  return { blob: outBlob, filename, dimensions: `${newW}×${newH}`, size: outBlob.size };
 }
 
 /* ===== Process button ===== */
@@ -505,7 +300,7 @@ processBtn.addEventListener('click', async () => {
       }
       const metaEl = items[i]?.querySelector('.file-meta');
       if (metaEl) metaEl.innerHTML = buildSizeMeta(files[i].size, results[i].size);
-      // 処理完了後にダウンロードボタンを挿入（削除ボタンの直前）
+      // 処理完了後にダウンロードボタンを挿入（クリック処理は fileListEl のイベント委譲が担当）
       const removeBtn = items[i]?.querySelector('.file-remove');
       if (removeBtn && !items[i].querySelector('.file-dl')) {
         const dlBtn = document.createElement('button');
@@ -513,19 +308,6 @@ processBtn.addEventListener('click', async () => {
         dlBtn.dataset.idx = String(i);
         dlBtn.type = 'button';
         dlBtn.textContent = '⬇ ダウンロード';
-        dlBtn.addEventListener('click', e => {
-          e.stopPropagation();
-          const r = results[+dlBtn.dataset.idx];
-          if (!r || r.error) return;
-          const url = URL.createObjectURL(r.blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = r.filename;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          setTimeout(() => URL.revokeObjectURL(url), 2000);
-        });
         removeBtn.before(dlBtn);
       }
     } catch (err) {
@@ -569,13 +351,7 @@ downloadBtn.addEventListener('click', async () => {
     }
 
     const content = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(content);
-    a.download = saveMethod === 'folder' ? `${name}.zip` : 'resized_images.zip';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    triggerDownload(content, saveMethod === 'folder' ? `${name}.zip` : 'resized_images.zip');
   } finally {
     downloadBtn.disabled = false;
     downloadBtn.textContent = '⬇ まとめて ZIP でダウンロード';
